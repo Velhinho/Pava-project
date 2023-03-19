@@ -1,5 +1,5 @@
 module Classes
-export PavaObj, Class, Object, make_obj, make_class, @defclass
+export PavaObj, Class, Object, make_obj, make_class, @defclass, class_of, compute_cpl, find_class_by_name
 
 struct PavaObj
   obj
@@ -42,6 +42,14 @@ macro defclass(name, superclasses, slots)
   :($(esc(name)) = $obj)
 end
 
+function class_of(class)
+  class.class_of
+end
+
+function find_class_by_name(class_name::Symbol)
+  eval(class_name)
+end
+
 function compute_cpl(class)
   queue = [class]
   cpl = []
@@ -56,12 +64,5 @@ function compute_cpl(class)
   end
   return cpl
 end
-
-@defclass(A, [], [])
-@defclass(B, [], [])
-@defclass(C, [], [])
-@defclass(D, [A, B], [])
-@defclass(E, [A, C], [])
-@defclass(F, [D, E], [])
 
 end

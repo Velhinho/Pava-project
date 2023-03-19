@@ -24,7 +24,7 @@ function add_method(generic_function, method)
 end
 
 function make_method(generic_function, specializers, native_function)
-  method = Dict(:specializers => specializers, :native_function => native_function)
+  method = make_obj(Method; specializers=specializers, native_function=native_function)
   add_method(generic_function, method)
   method
 end
@@ -53,7 +53,7 @@ macro defmethod(form)
   name = form.args[1].args[1]
   params = form.args[1].args[2:end]
   body = form.args[2]
-  specializers = parse_specializers(params)
+  specializers = map(find_class_by_name, parse_specializers(params))
   clean_params = map(remove_specializer, params)
   esc(:(make_method($name, $specializers, ($(clean_params...),) -> $body)))
 end
