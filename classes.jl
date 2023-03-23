@@ -31,19 +31,40 @@ function Base.setproperty!(pava_obj::PavaObj, symbol::Symbol, value::Any)
   setfield!(pava_obj.obj, symbol, value)
 end
 
-function make_class(name, direct_superclasses, slots, metaclass=Class)
+function make_class(name, direct_superclasses, direct_slots, metaclass=Class)
   direct_superclasses = direct_superclasses == [] ? [Object] : direct_superclasses
-  make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, slots=slots)
+  make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, slots=direct_slots)
 end
 
-macro defclass(name, superclasses, slots)
+macro defclass(name, superclasses, direct_slots, metaclass=Class)
   superclasses = superclasses == :([]) ? [Object] : superclasses
-  obj = make_class(name, eval(superclasses), eval(slots.args))
+  obj = make_class(name, eval(superclasses), eval(direct_slots.args), metaclass)
   :($(esc(name)) = $obj)
 end
 
-function class_of(class)
+@defclass(BuiltInClass, [Top], [])
+@defclass(_String, [Top], [], BuiltInClass)
+@defclass(_Int64, [Top], [], BuiltInClass)
+
+function class_name(class::PavaObj)
+  class.name
+end
+
+function class_direct_slots(class::PavaObj)
+  class.direct_slots
+end
+
+function class_direct_superclasses(class::PavaObj)
+  class.direct_superclasses
+end
+
+function class_of(class::PavaObj)
   class.class_of
+end
+
+function class_of(class)
+  name = "_" * string(typeof(class))
+  find_class_by_name(Symbol(name))
 end
 
 function find_class_by_name(class_name::Symbol)
@@ -107,32 +128,40 @@ macro defmethod(form)
   esc(:(make_method($name, $specializers, ($(clean_params...),) -> $body)))
 end
 
-function matches_args(method, args)
+function is_applicable(method, args)
   if length(method.specializers) != length(args)
     return false
   end
   for (specializer, arg) in zip(method.specializers, args)
-    if specializer != class_of(arg)
+    if !(specializer in compute_cpl(class_of(arg)))
       return false
     end
   end
   return true
 end
 
-function find_best_method(methods, args)
-  matched_methods = filter(method -> matches_args(method, args), methods)
-  if isempty(matched_methods)
-    return missing
-  else
-    return matched_methods[1]
-  end
+function compute_distance(specializer, arg)
+  cpl = compute_cpl(class_of(arg))
+  findfirst(map(x -> x == specializer, cpl))
+end
+
+function compare_methods(method1, method2, args)
+  d1 = map(t -> compute_distance(t...), zip(method1.specializers, args))
+  d2 = map(t -> compute_distance(t...), zip(method2.specializers, args))
+  d1 < d2
+end
+
+function find_applicable_methods(methods, args)
+  applicable_methods = filter(method -> is_applicable(method, args), methods)
+  sort!(applicable_methods, lt=(m1, m2) -> compare_methods(m1, m2, args))
+  applicable_methods
 end
 
 function (gen_func::PavaObj)(args...)
   # This is called when generic function is called
   methods = gen_func.methods
-  best_method = find_best_method(methods, args)
-  best_method.native_function(args...)
+  applicable_methods = find_applicable_methods(methods, args)
+  applicable_methods[1].native_function(args...)
 end
 
 function compute_cpl(class)
