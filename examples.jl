@@ -31,3 +31,7 @@ end
 
 @defclass(A, [], [])
 print_object(A, stdout)
+
+@defclass(ComplexNumber, [], [real, imag])
+c1 = new(ComplexNumber, real=1, imag=2)
+println(c1.slots[:real])

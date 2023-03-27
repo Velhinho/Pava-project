@@ -179,4 +179,7 @@ function compute_cpl(class)
   return cpl
 end
 
+@defclass(A, [], [])
+
+
 end
