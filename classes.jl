@@ -6,12 +6,11 @@ struct PavaObj
 end
 
 Class = PavaObj(Dict(:name => :Class, :direct_superclasses => [], :slots => [], :class_of => missing))
-# FIXME
-# Class.direct_superclasses = merge(Class.direct_superclasses, [Top])???
-# Class[:class_of] = Class
+Class.obj[:class_of] = Class
 
 Top = PavaObj(Dict(:name => :Top, :direct_superclasses => [], :slots => [], :class_of => Class))
 Object = PavaObj(Dict(:name => :Object, :direct_superclasses => [Top], :slots => [], :class_of => Class))
+Class.obj[:direct_superclasses] = [Object]
 
 function make_obj(class; kwargs...)
   obj = Dict{Symbol, Any}(:class_of => class)
@@ -108,7 +107,7 @@ end
 
 
 function parse_param_type(param::Symbol)
-  :Object
+  :Top
 end
 
 function parse_param_type(param::Expr)
@@ -192,5 +191,9 @@ end
 
 @defgeneric compute_cpl(class)
 @defmethod compute_cpl(class::BuiltInClass) = [class, Object, Top]
+
+@defgeneric print_object(obj, io)
+@defmethod print_object(obj::Object, io) =
+  print(io, "<$(class_name(class_of(obj))) $(string(objectid(obj), base=62))>")
 
 end

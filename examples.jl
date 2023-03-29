@@ -23,10 +23,6 @@ end
 draw(make_obj(Circle), "Hello")
 draw(123, "Hello")
 
-@defgeneric print_object(obj)
-
-@defmethod print_object(obj::Object, io) = print(io, "hello")
-
 @defclass(ComplexNumber, [], [real, img])
 c1 = make_obj(ComplexNumber; real=1, img=2)
 print_object(c1, stdout)
