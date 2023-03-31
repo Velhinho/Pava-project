@@ -30,26 +30,26 @@ function check_initform(args)
 end
 
 function initialize(instance, initargs)
-  println(instance.class_of.slots)
   Args = []
-  for i in (instance.class_of.slots)
-    j = (i.args)
-    println(j)
-    k = j[1]
+  for slot in (instance.class_of.slots)
+    if isa(slot, Expr)
+      k = slot.args[1]
+      value = check_initform(slot.args)
+    else
+      k = slot
+      value = missing
+    end
     push!(Args, k)
-    value = check_initform(j)
-    instance.slots[k] = value
+    instance.slots[k] = value  
   end
   println(Args)
   for (k, v) in initargs
     if k in Args 
-      println(k, v)
       instance.slots[k] = v
     else
       println("Argument: ", k, " isn't defined in the class: ", instance.class_of.name)
     end
   end
-  println(instance.slots)
 end
 
 function new(class; initargs...)
@@ -64,5 +64,17 @@ end
 [age, reader=get_age, writer=set_age!, initform=0],
 [friend, reader=get_friend, writer=set_friend!]],
 metaclass=UndoableClass)
-c1 = new(Person)
+
+@defclass(ComplexNumber, [], [real, img])
+
+p1 = new(Person)
+# println(getproperty(p1, :age))
+
+c1 = new(ComplexNumber, real=1, img=2)
+print(p1.slots)
+print(c1.slots)
+# println(getproperty(c1, :real))
+
+
+
 end
