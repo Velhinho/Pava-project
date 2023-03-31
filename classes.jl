@@ -6,12 +6,11 @@ struct PavaObj
 end
 
 Class = PavaObj(Dict(:name => :Class, :direct_superclasses => [], :slots => [], :class_of => missing))
-# FIXME
-# Class.direct_superclasses = merge(Class.direct_superclasses, [Top])???
-# Class[:class_of] = Class
+Class.obj[:class_of] = Class
 
 Top = PavaObj(Dict(:name => :Top, :direct_superclasses => [], :slots => [], :class_of => Class))
 Object = PavaObj(Dict(:name => :Object, :direct_superclasses => [Top], :slots => [], :class_of => Class))
+Class.obj[:direct_superclasses] = [Object]
 
 function make_obj(class; kwargs...)
   obj = Dict{Symbol, Any}(:class_of => class)
@@ -36,15 +35,16 @@ function make_class(name, direct_superclasses, direct_slots, metaclass=Class)
   make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, slots=direct_slots)
 end
 
-macro defclass(name, superclasses, direct_slots, metaclass=Class)
-  superclasses = superclasses == :([]) ? [Object] : superclasses
-  obj = make_class(name, eval(superclasses), eval(direct_slots.args), metaclass)
-  :($(esc(name)) = $obj)
+macro defclass(name, superclasses, direct_slots, metaclass=:(Class))
+  superclasses = superclasses == :([]) ? :([Object]) : superclasses
+  quoted_name = QuoteNode(name)
+  quoted_slots = QuoteNode(direct_slots.args)
+  :($(esc(name)) = make_class($quoted_name, $superclasses, $quoted_slots, $metaclass))
 end
 
-@defclass(BuiltInClass, [Top], [])
-@defclass(_String, [Top], [], BuiltInClass)
-@defclass(_Int64, [Top], [], BuiltInClass)
+@defclass(BuiltInClass, [Top], [], Class)
+@defclass(_String, [], [], BuiltInClass)
+@defclass(_Int64, [], [], BuiltInClass)
 
 function class_name(class::PavaObj)
   class.name
@@ -62,13 +62,20 @@ function class_of(class::PavaObj)
   class.class_of
 end
 
-function class_of(class)
-  name = "_" * string(typeof(class))
-  find_class_by_name(Symbol(name))
+function class_of(class::Int64)
+  _Int64
 end
 
-function find_class_by_name(class_name::Symbol)
-  eval(class_name)
+function class_of(class::String)
+  _String
+end
+
+function class_of(class)
+  Top
+end
+
+function metaclass_of(class)
+  class_of(class_of(class))
 end
 
 # GenericFunction = make_class(:GenericFunction, [], [:methods])
@@ -100,7 +107,7 @@ end
 
 
 function parse_param_type(param::Symbol)
-  :Object
+  :Top
 end
 
 function parse_param_type(param::Expr)
@@ -123,9 +130,9 @@ macro defmethod(form)
   name = form.args[1].args[1]
   params = form.args[1].args[2:end]
   body = form.args[2]
-  specializers = map(find_class_by_name, parse_specializers(params))
+  specializers = parse_specializers(params)
   clean_params = map(remove_specializer, params)
-  esc(:(make_method($name, $specializers, ($(clean_params...),) -> $body)))
+  :(make_method($(esc(name)), [$(specializers...)], ($(clean_params...),) -> $body))
 end
 
 function is_applicable(method, args)
@@ -133,7 +140,10 @@ function is_applicable(method, args)
     return false
   end
   for (specializer, arg) in zip(method.specializers, args)
-    if !(specializer in compute_cpl(class_of(arg)))
+    meta = metaclass_of(arg)
+    class = class_of(arg)
+    cpl =  meta == Class ? standard_compute_cpl(class) : compute_cpl(class)
+    if !(specializer in cpl)
       return false
     end
   end
@@ -141,7 +151,7 @@ function is_applicable(method, args)
 end
 
 function compute_distance(specializer, arg)
-  cpl = compute_cpl(class_of(arg))
+  cpl = metaclass_of(arg) == Class ? standard_compute_cpl(class_of(arg)) : compute_cpl(class_of(arg))
   findfirst(map(x -> x == specializer, cpl))
 end
 
@@ -164,7 +174,7 @@ function (gen_func::PavaObj)(args...)
   applicable_methods[1].native_function(args...)
 end
 
-function compute_cpl(class)
+function standard_compute_cpl(class)
   queue = [class]
   cpl = []
   while !isempty(queue)
@@ -179,7 +189,11 @@ function compute_cpl(class)
   return cpl
 end
 
-@defclass(A, [], [])
+@defgeneric compute_cpl(class)
+@defmethod compute_cpl(class::BuiltInClass) = [class, Object, Top]
 
+@defgeneric print_object(obj, io)
+@defmethod print_object(obj::Object, io) =
+  print(io, "<$(class_name(class_of(obj))) $(string(objectid(obj), base=62))>")
 
 end

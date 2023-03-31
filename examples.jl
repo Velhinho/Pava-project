@@ -23,15 +23,6 @@ end
 draw(make_obj(Circle), "Hello")
 draw(123, "Hello")
 
-print_object = make_generic_function(:obj, :io)
-
-let method = make_obj(Method; specializers=[Class, Top], native_function=(class, io) -> print(io, "hello"))
-  add_method(print_object, method)
-end
-
-@defclass(A, [], [])
-print_object(A, stdout)
-
-@defclass(ComplexNumber, [], [real, imag])
-c1 = new(ComplexNumber, real=1, imag=2)
-println(c1.slots[:real])
+@defclass(ComplexNumber, [], [real, img])
+c1 = make_obj(ComplexNumber; real=1, img=2)
+print_object(c1, stdout)
