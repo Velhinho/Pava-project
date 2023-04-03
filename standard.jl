@@ -42,7 +42,6 @@ function initialize(instance, initargs)
     push!(Args, k)
     instance.slots[k] = value  
   end
-  println(Args)
   for (k, v) in initargs
     if k in Args 
       instance.slots[k] = v
@@ -59,22 +58,31 @@ function new(class; initargs...)
   end
 end
 
-@defclass(Person, [],
-[[name, reader=get_name, writer=set_name!],
-[age, reader=get_age, writer=set_age!, initform=0],
-[friend, reader=get_friend, writer=set_friend!]],
-metaclass=UndoableClass)
+# @defclass(Person, [],
+# [[name, reader=get_name, writer=set_name!],
+# [age, reader=get_age, writer=set_age!, initform=0],
+# [friend, reader=get_friend, writer=set_friend!]],
+# metaclass=UndoableClass)
 
 @defclass(ComplexNumber, [], [real, img])
 
-p1 = new(Person)
+# p1 = new(Person)
 # println(getproperty(p1, :age))
 
 c1 = new(ComplexNumber, real=1, img=2)
-print(p1.slots)
-print(c1.slots)
+# print(p1.slots)
+# print(c1.slots)
 # println(getproperty(c1, :real))
-
-
+# println(c1.real)
+println(getproperty(c1, :real))
+#1
+println(c1.real)
+#1
+println(setproperty!(c1, :imag, -1))
+#-1
+c1.imag += 3
+println(c1.imag)
+#2
+println(c1)
 
 end

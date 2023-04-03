@@ -23,11 +23,25 @@ end
 function Base.getproperty(pava_obj::PavaObj, symbol::Symbol)
   # FIXME
   # Base.getproperty leads to infinite recursion
-  getfield(pava_obj, :obj)[symbol]
+  # println(getfield(pava_obj, :obj)[symbol])
+  try
+    getfield(pava_obj, :obj)[symbol]
+  catch
+  #   println("Hello")
+  #   println( symbol)
+    getfield(pava_obj, :obj)[:slots][symbol]
+  end
+
 end
 
 function Base.setproperty!(pava_obj::PavaObj, symbol::Symbol, value::Any)
-  setfield!(pava_obj.obj, symbol, value)
+  try
+      getfield(pava_obj, :obj)[symbol] = value
+
+  catch e
+      getfield(pava_obj, :obj)[:slots][symbol] = value
+      
+  end
 end
 
 function make_class(name, direct_superclasses, direct_slots, metaclass=Class)
