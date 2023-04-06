@@ -1,5 +1,5 @@
 module Classes
-export PavaObj, Class, Object, make_obj, make_class, @defclass, class_of, find_class_by_name
+export PavaObj, Class, Object, make_obj, make_class, @defclass, class_of, find_class_by_name, @defgeneric, @defmethod, CountingClass, class_direct_slots, standard_compute_cpl
 
 struct PavaObj
   obj
@@ -23,25 +23,11 @@ end
 function Base.getproperty(pava_obj::PavaObj, symbol::Symbol)
   # FIXME
   # Base.getproperty leads to infinite recursion
-  # println(getfield(pava_obj, :obj)[symbol])
-  try
-    getfield(pava_obj, :obj)[symbol]
-  catch
-  #   println("Hello")
-  #   println( symbol)
-    getfield(pava_obj, :obj)[:slots][symbol]
-  end
-
+  getfield(pava_obj, :obj)[symbol]
 end
 
 function Base.setproperty!(pava_obj::PavaObj, symbol::Symbol, value::Any)
-  try
-      getfield(pava_obj, :obj)[symbol] = value
-
-  catch e
-      getfield(pava_obj, :obj)[:slots][symbol] = value
-      
-  end
+  setfield!(pava_obj.obj, symbol, value)
 end
 
 function make_class(name, direct_superclasses, direct_slots, metaclass=Class)
@@ -65,7 +51,15 @@ function class_name(class::PavaObj)
 end
 
 function class_direct_slots(class::PavaObj)
-  class.direct_slots
+  class.slots
+end
+
+function class_slots(class::PavaObj)
+  compute_slots(class)
+end
+
+function class_cpl(class::PavaObj)
+  standard_compute_cpl(class)
 end
 
 function class_direct_superclasses(class::PavaObj)
@@ -209,5 +203,96 @@ end
 @defgeneric print_object(obj, io)
 @defmethod print_object(obj::Object, io) =
   print(io, "<$(class_name(class_of(obj))) $(string(objectid(obj), base=62))>")
+
+
+
+
+
+@defgeneric allocate_instance(class)
+
+@defgeneric initialize(instance, args)
+
+@defmethod allocate_instance(class::Class) = begin
+  #println(class.slots)
+  obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :slots => Dict{Symbol, Any}(), :class_of => class)
+  PavaObj(obj)
+end
+
+@defclass(CountingClass, [Class], [counter=0])
+
+@defmethod allocate_instance(class::CountingClass) = begin
+  counter = class_of(class).slots[1].args[2]
+  class_of(class).slots[1].args[2] = counter + 1
+  #call_next_method() - still needs to be created, instead using something similar below
+  obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :slots => Dict{Symbol, Any}(), :class_of => class)
+  PavaObj(obj)
+end
+
+function check_initform(args)
+  for i in args
+    println(typeof(i))
+    if isa(i, Expr)
+      if in(:initform, i.args)
+        return i.args[2]
+      end
+    end
+  end
+  return missing
+end
+ 
+#doenst work for  - BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
+@defmethod initialize(object::Object, initargs) = begin
+  Args = []
+  slots = compute_slots(object.class_of)
+  for slot in (slots)
+    if isa(slot, Expr)
+      k = slot.args[1]
+      value = slot.args[2]
+      #value = check_initform(slot.args)
+    else
+      k = slot
+      value = missing
+    end
+    push!(Args, k)
+    object.slots[k] = value  
+  end
+  for (k, v) in initargs
+    if k in Args 
+      object.slots[k] = v
+    else
+      println("Argument: ", k, " isn't defined in the class: ", object.class_of.name)
+    end
+  end
+end
+
+@defmethod initialize(class::Class, initargs) = begin
+  new_slots = compute_slots(class) # should it be here or on object? 
+  println(class)
+  println(initargs)
+end
+
+#=@defmethod initialize(generic::GenericFunction, initargs) = begin
+
+
+end  =#
+
+#@defmethod initialize(method::MultiMethod, initargs) = ??
+
+
+function new(class; initargs...)
+  let instance = allocate_instance(class)
+    initialize(instance, initargs)
+    instance
+  end
+end
+
+@defclass(Foo, [], [], metaclass=CountingClass)
+#c2 = new(Foo) isnt working, gives error BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
+
+
+#@defgeneric compute_slots(class)
+function compute_slots(class)
+  vcat(map(class_direct_slots, class_cpl(class))...)
+end
 
 end
