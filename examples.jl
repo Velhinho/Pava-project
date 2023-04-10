@@ -51,8 +51,18 @@ p1 = new(Person)
 println(getproperty(p1, :age))
 print(p1.slots)
 
+
+@defclass(Foo, [], [], metaclass=CountingClass)
+@defclass(Bar, [], [], metaclass=CountingClass)
+#c2 = new(Foo) isnt working, gives error BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
+new(Foo)
+new(Foo)
+println(Foo.class_of.slots[1]) #counter
+
+
 @defclass(Foo, [], [a=1, b=2])
 @defclass(Bar, [], [b=3, c=4])
 @defclass(FooBar, [Foo, Bar], [a=5, d=6])
+@defclass(FooBar2, [Foo, Bar], [a=3], metaclass=AvoidCollisionsClass)
 foobar1 = new(FooBar)
 println(foobar1.slots)

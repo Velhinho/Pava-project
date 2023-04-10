@@ -50,12 +50,25 @@ function class_name(class::PavaObj)
   class.name
 end
 
-function class_direct_slots(class::PavaObj)
+function slot_names(slots)
+  _slots = []
+  for slot in slots
+    push!(_slots, slot.args[1])
+  end
+  _slots
+end  
+
+function class_direct_slots_w_values(class::PavaObj)
   class.slots
 end
 
+function class_direct_slots(class::PavaObj)
+  slot_names(class.slots)
+end
+
 function class_slots(class::PavaObj)
-  compute_slots(class)
+  slots = compute_slots(class)
+  slot_names(slots)
 end
 
 function class_cpl(class::PavaObj)
@@ -175,11 +188,19 @@ function find_applicable_methods(methods, args)
   applicable_methods
 end
 
+function no_applicable_method(generic_function, args)
+  throw(error("No applicable method for function: ", args[1].name)) #still needs to be fixed
+end 
+
 function (gen_func::PavaObj)(args...)
   # This is called when generic function is called
   methods = gen_func.methods
   applicable_methods = find_applicable_methods(methods, args)
-  applicable_methods[1].native_function(args...)
+  if (isempty(applicable_methods))
+    no_applicable_method(gen_func, args)
+  else
+    applicable_methods[1].native_function(args...)
+  end
 end
 
 function standard_compute_cpl(class)
@@ -206,19 +227,17 @@ end
 
 
 
-
-
 @defgeneric allocate_instance(class)
-
-@defgeneric initialize(instance, args)
+@defgeneric compute_slots(class)
+#@defgeneric initialize(instance, args)
 
 @defmethod allocate_instance(class::Class) = begin
-  #println(class.slots)
   obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :slots => Dict{Symbol, Any}(), :class_of => class)
   PavaObj(obj)
 end
 
 @defclass(CountingClass, [Class], [counter=0])
+@defclass(AvoidCollisionsClass, [Class], [])
 
 @defmethod allocate_instance(class::CountingClass) = begin
   counter = class_of(class).slots[1].args[2]
@@ -239,12 +258,17 @@ function check_initform(args)
   end
   return missing
 end
+
+function initialize_slots(class)
+  vcat(map(class_direct_slots_w_values, class_cpl(class))...)
+end
  
 #doenst work for  - BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
-@defmethod initialize(object::Object, initargs) = begin
+function initialize(object, initargs)
   Args = []
-  slots = compute_slots(object.class_of)
-  for slot in (slots)
+  slots = compute_slots(object.class_of) #initialize slots without values
+  slots = initialize_slots(object.class_of)
+  for slot in slots
     if isa(slot, Expr)
       k = slot.args[1]
       value = slot.args[2]
@@ -265,16 +289,16 @@ end
   end
 end
 
-@defmethod initialize(class::Class, initargs) = begin
+#=@defmethod initialize(class::Class, initargs) = begin
   new_slots = compute_slots(class) # should it be here or on object? 
   println(class)
   println(initargs)
-end
+end=#
 
 #=@defmethod initialize(generic::GenericFunction, initargs) = begin
 
 
-end  =#
+end=#
 
 #@defmethod initialize(method::MultiMethod, initargs) = ??
 
@@ -286,13 +310,16 @@ function new(class; initargs...)
   end
 end
 
-@defclass(Foo, [], [], metaclass=CountingClass)
-#c2 = new(Foo) isnt working, gives error BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
+@defmethod compute_slots(class::Class) = vcat(map(class_direct_slots, class_cpl(class))...)
 
-
-#@defgeneric compute_slots(class)
-function compute_slots(class)
-  vcat(map(class_direct_slots, class_cpl(class))...)
+@defmethod compute_slots(class::AvoidCollisionsClass) = let
+  slots = vcat(map(class_direct_slots, class_cpl(class))...)
+  duplicates = symdiff(slots, unique(slots))
+  if (isempty(duplicates))
+    slots
+  else
+    slots : error("Multiple occurrences of slots: $(join(map(string, duplicates), ", "))")
+  end
 end
 
 end
