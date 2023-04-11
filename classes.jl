@@ -5,11 +5,11 @@ struct PavaObj
   obj
 end
 
-Class = PavaObj(Dict(:name => :Class, :direct_superclasses => [], :slots => [], :class_of => missing))
+Class = PavaObj(Dict(:name => :Class, :direct_superclasses => [], :direct_slots => [], :class_of => missing))
 Class.obj[:class_of] = Class
 
-Top = PavaObj(Dict(:name => :Top, :direct_superclasses => [], :slots => [], :class_of => Class))
-Object = PavaObj(Dict(:name => :Object, :direct_superclasses => [Top], :slots => [], :class_of => Class))
+Top = PavaObj(Dict(:name => :Top, :direct_superclasses => [], :direct_slots => [], :class_of => Class))
+Object = PavaObj(Dict(:name => :Object, :direct_superclasses => [Top], :direct_slots => [], :class_of => Class))
 Class.obj[:direct_superclasses] = [Object]
 
 function make_obj(class; kwargs...)
@@ -32,7 +32,7 @@ end
 
 function make_class(name, direct_superclasses, direct_slots, metaclass=Class)
   direct_superclasses = direct_superclasses == [] ? [Object] : direct_superclasses
-  make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, slots=direct_slots)
+  make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, direct_slots=direct_slots)
 end
 
 macro defclass(name, superclasses, direct_slots, metaclass=:(Class))
@@ -53,17 +53,21 @@ end
 function slot_names(slots)
   _slots = []
   for slot in slots
-    push!(_slots, slot.args[1])
+    if isa(slot, Expr)
+      push!(_slots, slot.args[1])
+    else
+      push!(_slots, slot)
+    end
   end
   _slots
 end  
 
 function class_direct_slots_w_values(class::PavaObj)
-  class.slots
+  class.direct_slots
 end
 
 function class_direct_slots(class::PavaObj)
-  slot_names(class.slots)
+  slot_names(class.direct_slots)
 end
 
 function class_slots(class::PavaObj)
@@ -229,10 +233,10 @@ end
 
 @defgeneric allocate_instance(class)
 @defgeneric compute_slots(class)
-#@defgeneric initialize(instance, args)
+@defgeneric initialize(instance, args)
 
 @defmethod allocate_instance(class::Class) = begin
-  obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :slots => Dict{Symbol, Any}(), :class_of => class)
+  obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :direct_slots => Dict{Symbol, Any}(), :class_of => class)
   PavaObj(obj)
 end
 
@@ -240,16 +244,15 @@ end
 @defclass(AvoidCollisionsClass, [Class], [])
 
 @defmethod allocate_instance(class::CountingClass) = begin
-  counter = class_of(class).slots[1].args[2]
+  counter = class_of(class).direct_slots[1].args[2]
   class_of(class).slots[1].args[2] = counter + 1
   #call_next_method() - still needs to be created, instead using something similar below
-  obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :slots => Dict{Symbol, Any}(), :class_of => class)
+  obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :direct_slots => Dict{Symbol, Any}(), :class_of => class)
   PavaObj(obj)
 end
 
 function check_initform(args)
   for i in args
-    println(typeof(i))
     if isa(i, Expr)
       if in(:initform, i.args)
         return i.args[2]
@@ -263,8 +266,8 @@ function initialize_slots(class)
   vcat(map(class_direct_slots_w_values, class_cpl(class))...)
 end
  
-#doenst work for  - BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
-function initialize(object, initargs)
+#doenst work when generic  - BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
+@defmethod initialize(object, initargs) = begin
   Args = []
   slots = compute_slots(object.class_of) #initialize slots without values
   slots = initialize_slots(object.class_of)
@@ -278,11 +281,11 @@ function initialize(object, initargs)
       value = missing
     end
     push!(Args, k)
-    object.slots[k] = value  
+    object.direct_slots[k] = value  
   end
   for (k, v) in initargs
     if k in Args 
-      object.slots[k] = v
+      object.direct_slots[k] = v
     else
       println("Argument: ", k, " isn't defined in the class: ", object.class_of.name)
     end
@@ -290,13 +293,14 @@ function initialize(object, initargs)
 end
 
 #=@defmethod initialize(class::Class, initargs) = begin
-  new_slots = compute_slots(class) # should it be here or on object? 
-  println(class)
-  println(initargs)
+  all_slotss = compute_slots(class)
+  create a field named slots in class
+  compute_getter_and_setter?
+
 end=#
 
 #=@defmethod initialize(generic::GenericFunction, initargs) = begin
-
+?
 
 end=#
 
@@ -321,5 +325,8 @@ end
     slots : error("Multiple occurrences of slots: $(join(map(string, duplicates), ", "))")
   end
 end
+
+@defclass(ComplexNumber, [], [real=1, img=1])
+println(ComplexNumber)
 
 end
