@@ -66,3 +66,22 @@ println(Foo.class_of.slots[1]) #counter
 @defclass(FooBar2, [Foo, Bar], [a=3], metaclass=AvoidCollisionsClass)
 foobar1 = new(FooBar)
 println(foobar1.slots)
+
+@defclass(Person, [], [])
+@defclass(Student, [Person], [])
+
+@defgeneric hello(person)
+@defmethod hello(person::Person) = println("Hello person")
+@defmethod hello(person::Student) = begin
+  println("Hello student")
+  call_next_method()
+end
+
+hello(make_obj(Person))
+hello(make_obj(Student))
+
+
+@defclass(Person, [], [[name, reader=get_name, writer=set_name!], [age, reader=get_age]])
+p = make_obj(Person; name="Joe", age=123)
+get_name(p)
+get_age(p)

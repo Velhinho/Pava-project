@@ -35,11 +35,73 @@ function make_class(name, direct_superclasses, direct_slots, metaclass=Class)
   make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, direct_slots=direct_slots)
 end
 
+function get_slot_name(slot::Symbol)
+  slot
+end
+
+function get_slot_name(slot::Expr)
+  slot.args[1]
+end
+
+function get_reader(slot::Symbol, class)
+  []
+end
+
+function get_reader(slot::Expr, class)
+  slot_name = get_slot_name(slot)
+  option = []
+  for expr in slot.args[2:end]
+    if expr.args[1] == :reader
+      func_name = expr.args[2]
+      body = quote
+        @defgeneric $(esc(func_name))(o::$(esc(class)))
+        @defmethod $(esc(func_name))(o::$(esc(class))) = o. $slot_name
+      end
+      option = [body]
+    end
+  end
+  return option
+end
+
+function get_readers(direct_slots, class)
+  append!([], map(slot -> get_reader(slot, class), direct_slots.args)...)
+end
+
+function get_writer(slot::Symbol, class)
+  []
+end
+
+function get_writer(slot::Expr, class)
+  slot_name = get_slot_name(slot)
+  option = []
+  for expr in slot.args[2:end]
+    if expr.args[1] == :writer
+      func_name = expr.args[2]
+      body = quote
+        @defgeneric $(esc(func_name))(o::$(esc(class)), v)
+        @defmethod $(esc(func_name))(o::$(esc(class)), v) = o. $slot_name = v
+      end
+      option = [body]
+    end
+  end
+  return option
+end
+
+function get_writers(direct_slots, class)
+  append!([], map(slot -> get_writer(slot, class), direct_slots.args)...)
+end
+
 macro defclass(name, superclasses, direct_slots, metaclass=:(Class))
+  readers = get_readers(direct_slots, name)
+  writers = get_writers(direct_slots, name)
   superclasses = superclasses == :([]) ? :([Object]) : superclasses
   quoted_name = QuoteNode(name)
-  quoted_slots = QuoteNode(direct_slots.args)
-  :($(esc(name)) = make_class($quoted_name, $superclasses, $quoted_slots, $metaclass))
+  quoted_slots = QuoteNode(map(get_slot_name, direct_slots.args))
+  quote
+    $(esc(name)) = make_class($quoted_name, $superclasses, $quoted_slots, $metaclass)
+    $(readers...)
+    $(writers...)
+  end
 end
 
 @defclass(BuiltInClass, [Top], [], Class)
@@ -116,8 +178,7 @@ end
 macro defgeneric(form)
   name = form.args[1]
   params = form.args[2:end]
-  gen_func = make_generic_function(params)
-  :($(esc(name)) = $gen_func)
+  :($(esc(name)) = make_generic_function($params))
 end
 
 function add_method(generic_function, method)
@@ -157,7 +218,7 @@ macro defmethod(form)
   body = form.args[2]
   specializers = parse_specializers(params)
   clean_params = map(remove_specializer, params)
-  :(make_method($(esc(name)), [$(specializers...)], ($(clean_params...),) -> $body))
+  :(make_method($(esc(name)), [$(specializers...)], (call_next_method, $(clean_params...)) -> $body))
 end
 
 function is_applicable(method, args)
@@ -195,6 +256,13 @@ end
 function no_applicable_method(generic_function, args)
   throw(error("No applicable method for function: ", args[1].name)) #still needs to be fixed
 end 
+function make_call_next_method(applicable_methods)
+  begin
+    i += 1
+    applicable_methods[i].native_function(call_next_method, args...)
+    call_next_method()
+  end
+end
 
 function (gen_func::PavaObj)(args...)
   # This is called when generic function is called
@@ -205,6 +273,12 @@ function (gen_func::PavaObj)(args...)
   else
     applicable_methods[1].native_function(args...)
   end
+  i = 0
+  call_next_method = () -> begin
+    i += 1
+    applicable_methods[i].native_function(call_next_method, args...)
+  end
+  call_next_method()
 end
 
 function standard_compute_cpl(class)
@@ -328,5 +402,8 @@ end
 
 @defclass(ComplexNumber, [], [real=1, img=1])
 println(ComplexNumber)
+
+end
+Base.show(io::IO, obj::PavaObj) = print_object(obj, io)
 
 end
