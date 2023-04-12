@@ -51,6 +51,7 @@ function get_reader(slot::Expr, class)
   slot_name = get_slot_name(slot)
   option = []
   for expr in slot.args[2:end]
+    println(expr)
     if expr.args[1] == :reader
       func_name = expr.args[2]
       body = quote
@@ -271,14 +272,13 @@ function (gen_func::PavaObj)(args...)
   if (isempty(applicable_methods))
     no_applicable_method(gen_func, args)
   else
-    applicable_methods[1].native_function(args...)
+    i = 0
+    call_next_method = () -> begin
+      i += 1
+      applicable_methods[i].native_function(call_next_method, args...)
+    end
+    call_next_method()
   end
-  i = 0
-  call_next_method = () -> begin
-    i += 1
-    applicable_methods[i].native_function(call_next_method, args...)
-  end
-  call_next_method()
 end
 
 function standard_compute_cpl(class)
@@ -314,15 +314,12 @@ end
   PavaObj(obj)
 end
 
-@defclass(CountingClass, [Class], [counter=0])
+@defclass(CountingClass, [Class], [counter])
 @defclass(AvoidCollisionsClass, [Class], [])
 
 @defmethod allocate_instance(class::CountingClass) = begin
-  counter = class_of(class).direct_slots[1].args[2]
-  class_of(class).slots[1].args[2] = counter + 1
-  #call_next_method() - still needs to be created, instead using something similar below
-  obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :direct_slots => Dict{Symbol, Any}(), :class_of => class)
-  PavaObj(obj)
+  counter = 0
+  call_next_method()
 end
 
 function check_initform(args)
@@ -341,7 +338,7 @@ function initialize_slots(class)
 end
  
 #doenst work when generic  - BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
-@defmethod initialize(object, initargs) = begin
+@defmethod initialize(object::Object, initargs) = begin
   Args = []
   slots = compute_slots(object.class_of) #initialize slots without values
   slots = initialize_slots(object.class_of)
@@ -400,10 +397,6 @@ end
   end
 end
 
-@defclass(ComplexNumber, [], [real=1, img=1])
-println(ComplexNumber)
-
-end
 Base.show(io::IO, obj::PavaObj) = print_object(obj, io)
 
 end
