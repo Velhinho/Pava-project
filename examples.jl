@@ -26,3 +26,17 @@ draw(123, "Hello")
 @defclass(ComplexNumber, [], [real, img])
 c1 = make_obj(ComplexNumber; real=1, img=2)
 print_object(c1, stdout)
+
+
+@defclass(Person, [], [])
+@defclass(Student, [Person], [])
+
+@defgeneric hello(person)
+@defmethod hello(person::Person) = println("Hello person")
+@defmethod hello(person::Student) = begin
+  println("Hello student")
+  call_next_method()
+end
+
+hello(make_obj(Person))
+hello(make_obj(Student))
