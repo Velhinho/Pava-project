@@ -16,10 +16,6 @@
 @defmethod draw(shape::Circle, device::_String) = println("circle string")
 @defmethod draw(shape::_Int64, device::_String) = println("int64 string")
 
-for m in find_applicable_methods(draw.methods, [make_obj(Line), make_obj(Screen)])
-  m.native_function(missing, missing)
-end
-
 draw(make_obj(Circle), "Hello")
 draw(123, "Hello")
 

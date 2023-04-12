@@ -5,19 +5,35 @@ struct PavaObj
   obj
 end
 
-Class = PavaObj(Dict(:name => :Class, :direct_superclasses => [], :direct_slots => [], :class_of => missing))
+Class = PavaObj(Dict(:name => :Class, :direct_superclasses => [], :direct_slots => [], :class_of => missing, :initargs => []))
 Class.obj[:class_of] = Class
 
-Top = PavaObj(Dict(:name => :Top, :direct_superclasses => [], :direct_slots => [], :class_of => Class))
-Object = PavaObj(Dict(:name => :Object, :direct_superclasses => [Top], :direct_slots => [], :class_of => Class))
+Top = PavaObj(Dict(:name => :Top, :direct_superclasses => [], :direct_slots => [], :class_of => Class, :initargs => []))
+Object = PavaObj(Dict(:name => :Object, :direct_superclasses => [Top], :direct_slots => [], :class_of => Class, :initargs => []))
 Class.obj[:direct_superclasses] = [Object]
 
-function make_obj(class; kwargs...)
-  obj = Dict{Symbol, Any}(:class_of => class)
-  for (k, v) in kwargs
-    obj[k] = v
+function standard_allocate(class)
+  d = Dict{Symbol, Any}(:class_of => class)
+  for k in class.direct_slots
+    d[k] = missing
   end
-  PavaObj(obj)
+  for (k, v) in class.initargs
+    d[k] = v
+  end
+  PavaObj(d)
+end
+
+function standard_initialize(pava_obj, initargs)
+  d = getfield(pava_obj, :obj)
+  for (k, v) in initargs
+    d[k] = v
+  end
+end
+
+function make_obj(class; kwargs...)
+  obj = standard_allocate(class)
+  standard_initialize(obj, kwargs)
+  obj
 end
 
 function Base.getproperty(pava_obj::PavaObj, symbol::Symbol)
@@ -27,12 +43,12 @@ function Base.getproperty(pava_obj::PavaObj, symbol::Symbol)
 end
 
 function Base.setproperty!(pava_obj::PavaObj, symbol::Symbol, value::Any)
-  setfield!(pava_obj.obj, symbol, value)
+  getfield(pava_obj, :obj)[symbol] = value
 end
 
-function make_class(name, direct_superclasses, direct_slots, metaclass=Class)
+function make_class(name, direct_superclasses, direct_slots, metaclass=Class, initargs=[])
   direct_superclasses = direct_superclasses == [] ? [Object] : direct_superclasses
-  make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, direct_slots=direct_slots)
+  make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, direct_slots=direct_slots, initargs=initargs)
 end
 
 function get_slot_name(slot::Symbol)
@@ -43,63 +59,63 @@ function get_slot_name(slot::Expr)
   slot.args[1]
 end
 
-function get_reader(slot::Symbol, class)
-  []
+function reader_body(class, slot_name, func_name)
+  quote
+    @defgeneric $(esc(func_name))(o::$(esc(class)))
+    @defmethod $(esc(func_name))(o::$(esc(class))) = o. $slot_name
+  end
 end
 
-function get_reader(slot::Expr, class)
+function writer_body(class, slot_name, func_name)
+  quote
+    @defgeneric $(esc(func_name))(o::$(esc(class)), v)
+    @defmethod $(esc(func_name))(o::$(esc(class)), v) = o. $slot_name = v
+  end
+end
+
+function get_option(slot::Symbol, keyword)
+  missing
+end
+
+function get_option(slot::Expr, keyword)
   slot_name = get_slot_name(slot)
-  option = []
+  option = missing
   for expr in slot.args[2:end]
-    println(expr)
-    if expr.args[1] == :reader
-      func_name = expr.args[2]
-      body = quote
-        @defgeneric $(esc(func_name))(o::$(esc(class)))
-        @defmethod $(esc(func_name))(o::$(esc(class))) = o. $slot_name
-      end
-      option = [body]
+    if expr.args[1] == keyword
+      option = (slot_name, expr.args[2])
     end
   end
   return option
+end
+
+function get_options(direct_slots, keyword)
+  options = map(slot -> get_option(slot, keyword), direct_slots.args)
+  filter(x -> !ismissing(x), options)
 end
 
 function get_readers(direct_slots, class)
-  append!([], map(slot -> get_reader(slot, class), direct_slots.args)...)
-end
-
-function get_writer(slot::Symbol, class)
-  []
-end
-
-function get_writer(slot::Expr, class)
-  slot_name = get_slot_name(slot)
-  option = []
-  for expr in slot.args[2:end]
-    if expr.args[1] == :writer
-      func_name = expr.args[2]
-      body = quote
-        @defgeneric $(esc(func_name))(o::$(esc(class)), v)
-        @defmethod $(esc(func_name))(o::$(esc(class)), v) = o. $slot_name = v
-      end
-      option = [body]
-    end
-  end
-  return option
+  options = get_options(direct_slots, :reader)
+  map(option -> reader_body(class, option...), options)
 end
 
 function get_writers(direct_slots, class)
-  append!([], map(slot -> get_writer(slot, class), direct_slots.args)...)
+  options = get_options(direct_slots, :writer)
+  map(option -> writer_body(class, option...), options)
+end
+
+function get_initargs(direct_slots, class)
+  get_options(direct_slots, :initform)
 end
 
 macro defclass(name, superclasses, direct_slots, metaclass=:(Class))
   readers = get_readers(direct_slots, name)
   writers = get_writers(direct_slots, name)
+  initargs = get_initargs(direct_slots, name)
   superclasses = superclasses == :([]) ? :([Object]) : superclasses
   quoted_name = QuoteNode(name)
   quoted_slots = QuoteNode(map(get_slot_name, direct_slots.args))
   quote
-    $(esc(name)) = make_class($quoted_name, $superclasses, $quoted_slots, $metaclass)
+    $(esc(name)) = make_class($quoted_name, $superclasses, $quoted_slots, $metaclass, $initargs)
     $(readers...)
     $(writers...)
   end
@@ -123,7 +139,7 @@ function slot_names(slots)
     end
   end
   _slots
-end  
+end
 
 function class_direct_slots_w_values(class::PavaObj)
   class.direct_slots
@@ -256,7 +272,7 @@ end
 
 function no_applicable_method(generic_function, args)
   throw(error("No applicable method for function: ", args[1].name)) #still needs to be fixed
-end 
+end
 function make_call_next_method(applicable_methods)
   begin
     i += 1
@@ -297,86 +313,28 @@ function standard_compute_cpl(class)
 end
 
 @defgeneric compute_cpl(class)
+@defmethod compute_cpl(class::Class) = standard_compute_cpl(class)
 @defmethod compute_cpl(class::BuiltInClass) = [class, Object, Top]
 
 @defgeneric print_object(obj, io)
 @defmethod print_object(obj::Object, io) =
   print(io, "<$(class_name(class_of(obj))) $(string(objectid(obj), base=62))>")
-
-
+Base.show(io::IO, obj::PavaObj) = print_object(obj, io)
 
 @defgeneric allocate_instance(class)
 @defgeneric compute_slots(class)
 @defgeneric initialize(instance, args)
 
-@defmethod allocate_instance(class::Class) = begin
-  obj = Dict(:name => class.name, :direct_superclasses => class.direct_superclasses, :direct_slots => Dict{Symbol, Any}(), :class_of => class)
-  PavaObj(obj)
-end
+@defmethod allocate_instance(class::Class) = standard_allocate(class)
+@defmethod initialize(obj::Object, initargs) = standard_initialize(obj, initargs)
 
-@defclass(CountingClass, [Class], [counter])
+@defclass(CountingClass, [Class], [[counter, initform=0]])
 @defclass(AvoidCollisionsClass, [Class], [])
 
 @defmethod allocate_instance(class::CountingClass) = begin
-  counter = 0
+  class.counter += 1
   call_next_method()
 end
-
-function check_initform(args)
-  for i in args
-    if isa(i, Expr)
-      if in(:initform, i.args)
-        return i.args[2]
-      end
-    end
-  end
-  return missing
-end
-
-function initialize_slots(class)
-  vcat(map(class_direct_slots_w_values, class_cpl(class))...)
-end
- 
-#doenst work when generic  - BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188
-@defmethod initialize(object::Object, initargs) = begin
-  Args = []
-  slots = compute_slots(object.class_of) #initialize slots without values
-  slots = initialize_slots(object.class_of)
-  for slot in slots
-    if isa(slot, Expr)
-      k = slot.args[1]
-      value = slot.args[2]
-      #value = check_initform(slot.args)
-    else
-      k = slot
-      value = missing
-    end
-    push!(Args, k)
-    object.direct_slots[k] = value  
-  end
-  for (k, v) in initargs
-    if k in Args 
-      object.direct_slots[k] = v
-    else
-      println("Argument: ", k, " isn't defined in the class: ", object.class_of.name)
-    end
-  end
-end
-
-#=@defmethod initialize(class::Class, initargs) = begin
-  all_slotss = compute_slots(class)
-  create a field named slots in class
-  compute_getter_and_setter?
-
-end=#
-
-#=@defmethod initialize(generic::GenericFunction, initargs) = begin
-?
-
-end=#
-
-#@defmethod initialize(method::MultiMethod, initargs) = ??
-
 
 function new(class; initargs...)
   let instance = allocate_instance(class)
@@ -396,7 +354,5 @@ end
     slots : error("Multiple occurrences of slots: $(join(map(string, duplicates), ", "))")
   end
 end
-
-Base.show(io::IO, obj::PavaObj) = print_object(obj, io)
 
 end
