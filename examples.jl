@@ -40,3 +40,9 @@ end
 
 hello(make_obj(Person))
 hello(make_obj(Student))
+
+
+@defclass(Person, [], [[name, reader=get_name, writer=set_name!], [age, reader=get_age]])
+p = make_obj(Person; name="Joe", age=123)
+get_name(p)
+get_age(p)
