@@ -78,6 +78,8 @@ hello(make_obj(Student))
 
 
 @defclass(Person, [], [[name, reader=get_name, writer=set_name!], [age, reader=get_age]])
+@defclass(Student, [Person], [[number, initform=456]])
 p = make_obj(Person; name="Joe", age=123)
 get_name(p)
 get_age(p)
+s = new(Student, name="ola")

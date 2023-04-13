@@ -5,11 +5,11 @@ struct PavaObj
   obj
 end
 
-Class = PavaObj(Dict(:name => :Class, :direct_superclasses => [], :direct_slots => [], :class_of => missing, :initargs => []))
+Class = PavaObj(Dict(:name => :Class, :direct_superclasses => [], :direct_slots => [], :class_of => missing, :initforms => []))
 Class.obj[:class_of] = Class
 
-Top = PavaObj(Dict(:name => :Top, :direct_superclasses => [], :direct_slots => [], :class_of => Class, :initargs => []))
-Object = PavaObj(Dict(:name => :Object, :direct_superclasses => [Top], :direct_slots => [], :class_of => Class, :initargs => []))
+Top = PavaObj(Dict(:name => :Top, :direct_superclasses => [], :direct_slots => [], :class_of => Class, :initforms => []))
+Object = PavaObj(Dict(:name => :Object, :direct_superclasses => [Top], :direct_slots => [], :class_of => Class, :initforms => []))
 Class.obj[:direct_superclasses] = [Object]
 
 function standard_allocate(class)
@@ -17,7 +17,7 @@ function standard_allocate(class)
   for k in class.direct_slots
     d[k] = missing
   end
-  for (k, v) in class.initargs
+  for (k, v) in class.initforms
     d[k] = v
   end
   PavaObj(d)
@@ -46,9 +46,9 @@ function Base.setproperty!(pava_obj::PavaObj, symbol::Symbol, value::Any)
   getfield(pava_obj, :obj)[symbol] = value
 end
 
-function make_class(name, direct_superclasses, direct_slots, metaclass=Class, initargs=[])
+function make_class(name, direct_superclasses, direct_slots, metaclass=Class, initforms=[])
   direct_superclasses = direct_superclasses == [] ? [Object] : direct_superclasses
-  make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, direct_slots=direct_slots, initargs=initargs)
+  make_obj(metaclass, name=name, direct_superclasses=direct_superclasses, direct_slots=direct_slots, initforms=initforms)
 end
 
 function get_slot_name(slot::Symbol)
@@ -164,6 +164,10 @@ end
 
 function class_of(class::PavaObj)
   class.class_of
+end
+
+function class_initforms(class::PavaObj)
+  class.initforms
 end
 
 function class_of(class::Int64)
@@ -323,9 +327,28 @@ Base.show(io::IO, obj::PavaObj) = print_object(obj, io)
 
 @defgeneric allocate_instance(class)
 @defgeneric compute_slots(class)
+@defgeneric compute_initforms(class)
 @defgeneric initialize(instance, args)
 
-@defmethod allocate_instance(class::Class) = standard_allocate(class)
+@defclass(Person, [], [[name, initform="Ola"]])
+
+@defmethod compute_slots(class::Class) = vcat(map(class_direct_slots, class_cpl(class))...)
+@defmethod compute_initforms(class::Class) = vcat(map(class_initforms, class_cpl(class))...)
+
+
+@defmethod allocate_instance(class::Class) = begin
+  d = Dict{Symbol, Any}(:class_of => class)
+  all_slots = compute_slots(class)
+  all_initforms = compute_initforms(class)
+  for k in all_slots
+    d[k] = missing
+  end
+  for (k, v) in all_initforms
+    d[k] = v
+  end
+  PavaObj(d)
+end
+
 @defmethod initialize(obj::Object, initargs) = standard_initialize(obj, initargs)
 
 @defclass(CountingClass, [Class], [[counter, initform=0]])
@@ -342,8 +365,6 @@ function new(class; initargs...)
     instance
   end
 end
-
-@defmethod compute_slots(class::Class) = vcat(map(class_direct_slots, class_cpl(class))...)
 
 @defmethod compute_slots(class::AvoidCollisionsClass) = let
   slots = vcat(map(class_direct_slots, class_cpl(class))...)
