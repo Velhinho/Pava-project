@@ -48,6 +48,15 @@ println(getproperty(p1, :age))
 print(p1.slots)
 
 
+@defclass(A, [], [], metaclass=FlavorsClass)
+@defclass(B, [], [], metaclass=FlavorsClass)
+@defclass(C, [], [], metaclass=FlavorsClass)
+@defclass(D, [A, B], [], metaclass=FlavorsClass)
+@defclass(E, [A, C], [], metaclass=FlavorsClass)
+@defclass(F, [D, E], [], metaclass=FlavorsClass)
+compute_cpl(F)
+
+
 @defclass(Foo, [], [], metaclass=CountingClass)
 @defclass(Bar, [], [], metaclass=CountingClass)
 #c2 = new(Foo) isnt working, gives error BoundsError: attempt to access 0-element Vector{Any} at index [1] at classes.jl:188

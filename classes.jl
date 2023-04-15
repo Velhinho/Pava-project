@@ -277,6 +277,7 @@ end
 function no_applicable_method(generic_function, args)
   throw(error("No applicable method for function: ", args[1].name)) #still needs to be fixed
 end
+
 function make_call_next_method(applicable_methods)
   begin
     i += 1
@@ -316,13 +317,25 @@ function standard_compute_cpl(class)
   return cpl
 end
 
+@defclass(CountingClass, [Class], [[counter, initform=0]])
+@defclass(AvoidCollisionsClass, [Class], [])
+@defclass(FlavorsClass, [Class], [])
+
+
 @defgeneric compute_cpl(class)
 @defmethod compute_cpl(class::Class) = standard_compute_cpl(class)
+@defmethod compute_cpl(class::FlavorsClass) =
+let depth_first_cpl(class) = [class, foldl(vcat, map(depth_first_cpl, class_direct_superclasses(class)), init=[])...], base_cpl = [Object, Top]
+vcat(unique(filter(!in(base_cpl), depth_first_cpl(class))), base_cpl)
+end
+
 @defmethod compute_cpl(class::BuiltInClass) = [class, Object, Top]
 
 @defgeneric print_object(obj, io)
 @defmethod print_object(obj::Object, io) =
   print(io, "<$(class_name(class_of(obj))) $(string(objectid(obj), base=62))>")
+@defmethod print_object(class::Class, io) =
+  print(io, "<$(class_name(class_of(class))) $(class_name(class))>")
 Base.show(io::IO, obj::PavaObj) = print_object(obj, io)
 
 @defgeneric allocate_instance(class)
@@ -351,9 +364,6 @@ end
 
 @defmethod initialize(obj::Object, initargs) = standard_initialize(obj, initargs)
 
-@defclass(CountingClass, [Class], [[counter, initform=0]])
-@defclass(AvoidCollisionsClass, [Class], [])
-
 @defmethod allocate_instance(class::CountingClass) = begin
   class.counter += 1
   call_next_method()
@@ -367,7 +377,7 @@ function new(class; initargs...)
 end
 
 @defmethod compute_slots(class::AvoidCollisionsClass) = let
-  slots = vcat(map(class_direct_slots, class_cpl(class))...)
+  slots = call_next_method()
   duplicates = symdiff(slots, unique(slots))
   if (isempty(duplicates))
     slots
